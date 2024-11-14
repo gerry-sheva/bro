@@ -1,56 +1,19 @@
 use axum::routing::get;
-use serde::{Deserialize, Serialize};
-use socketioxide::{
-    extract::{Data, SocketRef},
-    SocketIo
-};
+use socketioxide::SocketIo;
 use tower::ServiceBuilder;
 use tower_http::cors::CorsLayer;
 use tracing::info;
-use tracing_subscriber::FmtSubscriber;
-
-#[derive(Debug, Deserialize)]
-struct MessageIn {
-    room: String,
-    text: String,
-}
-
-#[derive(Serialize)]
-struct MessageOut {
-    text: String,
-    user: String,
-    time: chrono::DateTime<chrono::Utc>,
-}
-
-async fn on_connect(socket: SocketRef) {
-    info!("Connecting to socket {:?}", socket);
-
-    socket.on("join", |socket: SocketRef, Data::<String>(room)| {
-        info!("Connected to {:?}", room);
-        let _ = socket.leave_all();
-        let _ = socket.join(room);
-    });
-
-    socket.on("message", |socket: SocketRef, Data::<MessageIn>(data)| {
-        info!("Received message {:?}", data);
-
-        let response = MessageOut {
-            text: format!("{} bro", data.text),
-            user: format!("user-{}", socket.id),
-            time: chrono::Utc::now(),
-        };
-
-        let _ = socket.within(data.room).emit("message", &response);
-    })
-}
+use bro_app::chat;
+use bro_app::telemetry::{get_subscriber, init_subscriber};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    tracing::subscriber::set_global_default(FmtSubscriber::default())?;
+    let subscriber = get_subscriber("bro".into(), "info".into(), std::io::stdout);
+    init_subscriber(subscriber);
 
     let (layer, io) = SocketIo::new_layer();
 
-    io.ns("/", on_connect);
+    io.ns("/", chat::on_connect);
 
     let app = axum::Router::new()
         .route("/", get(|| async { "Hello, World!" }))
